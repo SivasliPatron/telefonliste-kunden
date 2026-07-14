@@ -28,3 +28,10 @@ test("a customer click can open the system contact picker", async () => {
   assert.match(app, /const openPicker = Boolean\(contact && !isComplete\(contact\)/);
   assert.match(app, /Nummer von \$\{contactName\} übernommen/);
 });
+
+test("Safari falls back to pasting a copied phone number", async () => {
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(app, /navigator\.clipboard\.readText\(\)/);
+  assert.match(app, /supportsContactPicker\(\) \? "Kontakte" : "Einfügen"/);
+  assert.match(app, /await pastePhoneFromClipboard\(\)/);
+});

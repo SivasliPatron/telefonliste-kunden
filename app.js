@@ -388,17 +388,70 @@
     );
   }
 
+  function contactActionLabel() {
+    return supportsContactPicker() ? "Kontakte" : "Einfügen";
+  }
+
+  function extractPhoneFromText(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+
+    const candidates = text.match(/(?:\+|00)?\d[\d\s()./-]{4,}\d/g) || [];
+    return (
+      candidates
+        .map((candidate) => candidate.trim())
+        .filter((candidate) => candidate.replace(/\D/g, "").length >= 6)
+        .sort(
+          (left, right) =>
+            right.replace(/\D/g, "").length - left.replace(/\D/g, "").length,
+        )[0] || ""
+    );
+  }
+
   function setPickingContact(isPicking) {
     state.isPickingContact = isPicking;
     elements.contactPickerButton.disabled = isPicking || state.isSaving;
-    elements.contactPickerButton.textContent = isPicking ? "Öffnet..." : "Kontakte";
+    elements.contactPickerButton.textContent = isPicking
+      ? supportsContactPicker()
+        ? "Öffnet..."
+        : "Einfügen..."
+      : contactActionLabel();
+  }
+
+  async function pastePhoneFromClipboard() {
+    if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
+      elements.phoneInput.focus({ preventScroll: true });
+      showToast("Nummer kopieren und im Feld einfügen");
+      return;
+    }
+
+    setPickingContact(true);
+    try {
+      const phone = extractPhoneFromText(await navigator.clipboard.readText());
+      if (!phone) {
+        showToast("Keine Telefonnummer zum Einfügen gefunden");
+        elements.phoneInput.focus({ preventScroll: true });
+        return;
+      }
+
+      elements.phoneInput.value = phone;
+      elements.phoneInput.setCustomValidity("");
+      showToast("Telefonnummer eingefügt");
+    } catch (error) {
+      if (error?.name !== "AbortError" && error?.name !== "NotAllowedError") {
+        console.error(error);
+      }
+      elements.phoneInput.focus({ preventScroll: true });
+      showToast("Nummer kopieren und im Feld einfügen");
+    } finally {
+      setPickingContact(false);
+    }
   }
 
   async function pickPhoneFromContacts() {
     if (state.isPickingContact || state.isSaving || !state.selectedId) return;
     if (!supportsContactPicker()) {
-      showToast("Kontaktwahl ist in Safari nicht aktiviert");
-      elements.phoneInput.focus({ preventScroll: true });
+      await pastePhoneFromClipboard();
       return;
     }
 
@@ -745,6 +798,8 @@
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && !state.isSaving) void refreshRemoteState({ quiet: true });
   });
+
+  setPickingContact(false);
 
   if (contacts.length === 0) {
     elements.emptyList.hidden = false;
