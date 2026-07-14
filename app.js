@@ -41,6 +41,7 @@
     editorEmail: document.querySelector("#editorEmail"),
     editorCity: document.querySelector("#editorCity"),
     phoneInput: document.querySelector("#phoneInput"),
+    contactPickerButton: document.querySelector("#contactPickerButton"),
     saveButton: document.querySelector("#saveButton"),
     ownerButtons: [...document.querySelectorAll("[data-owner-value]")],
     closeEditorButton: document.querySelector("#closeEditorButton"),
@@ -64,6 +65,7 @@
     phones: saved.phones,
     owners: saved.owners,
     isSaving: false,
+    isPickingContact: false,
   };
 
   let toastTimer = null;
@@ -378,6 +380,67 @@
     }
   }
 
+  function supportsContactPicker() {
+    return Boolean(
+      window.isSecureContext &&
+        navigator.contacts &&
+        typeof navigator.contacts.select === "function",
+    );
+  }
+
+  function setPickingContact(isPicking) {
+    state.isPickingContact = isPicking;
+    elements.contactPickerButton.disabled = isPicking || state.isSaving;
+    elements.contactPickerButton.textContent = isPicking ? "Öffnet..." : "Kontakte";
+  }
+
+  async function pickPhoneFromContacts() {
+    if (state.isPickingContact || state.isSaving || !state.selectedId) return;
+    if (!supportsContactPicker()) {
+      showToast("Kontaktwahl ist in Safari nicht aktiviert");
+      elements.phoneInput.focus({ preventScroll: true });
+      return;
+    }
+
+    setPickingContact(true);
+    try {
+      const selectedContacts = await navigator.contacts.select(["name", "tel"], {
+        multiple: false,
+      });
+      const selectedContact = selectedContacts?.[0];
+      if (!selectedContact) {
+        elements.phoneInput.focus({ preventScroll: true });
+        return;
+      }
+
+      const phoneNumbers = (selectedContact.tel || [])
+        .map((phone) => String(phone || "").trim())
+        .filter(Boolean);
+      if (phoneNumbers.length === 0) {
+        showToast("Dieser Kontakt hat keine Telefonnummer");
+        elements.phoneInput.focus({ preventScroll: true });
+        return;
+      }
+
+      elements.phoneInput.value = phoneNumbers[0];
+      elements.phoneInput.setCustomValidity("");
+      const contactName = String(selectedContact.name?.[0] || "").trim();
+      if (phoneNumbers.length > 1) {
+        showToast(`Erste von ${phoneNumbers.length} Nummern übernommen`);
+      } else {
+        showToast(contactName ? `Nummer von ${contactName} übernommen` : "Nummer übernommen");
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        showToast("Kontakt konnte nicht geöffnet werden");
+        console.error(error);
+      }
+      elements.phoneInput.focus({ preventScroll: true });
+    } finally {
+      setPickingContact(false);
+    }
+  }
+
   function selectContact(id, focusInput = true) {
     const contact = contacts.find((item) => item.id === id);
     if (!contact) return;
@@ -441,6 +504,7 @@
     state.isSaving = isSaving;
     elements.saveButton.disabled = isSaving;
     elements.skipButton.disabled = isSaving;
+    elements.contactPickerButton.disabled = isSaving || state.isPickingContact;
     elements.phoneInput.readOnly = isSaving;
     elements.saveButton.textContent = isSaving ? "Speichert..." : "Speichern & Nächster";
   }
@@ -624,7 +688,15 @@
 
   elements.contactList.addEventListener("click", (event) => {
     const row = event.target.closest("[data-contact-id]");
-    if (row) selectContact(row.dataset.contactId);
+    if (!row) return;
+    const contact = contacts.find((item) => item.id === row.dataset.contactId);
+    const openPicker = Boolean(contact && !isComplete(contact) && supportsContactPicker());
+    selectContact(row.dataset.contactId, !openPicker);
+    if (openPicker) void pickPhoneFromContacts();
+  });
+
+  elements.contactPickerButton.addEventListener("click", () => {
+    void pickPhoneFromContacts();
   });
 
   for (const button of elements.ownerButtons) {

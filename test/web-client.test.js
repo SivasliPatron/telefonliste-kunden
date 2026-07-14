@@ -12,6 +12,7 @@ test("configuration loads before the phonebook application", async () => {
   assert.ok(html.indexOf('src="config.js?') < html.indexOf('src="app.js?'));
   assert.match(html, /id="syncStatus"/);
   assert.match(html, /id="saveButton"/);
+  assert.match(html, /id="contactPickerButton"/);
 });
 
 test("saving waits for the shared API and reports failures", async () => {
@@ -19,4 +20,11 @@ test("saving waits for the shared API and reports failures", async () => {
   assert.match(app, /await requestJson\(`\/api\/contacts\//);
   assert.match(app, /Telefonnummer online gespeichert/);
   assert.match(app, /Nicht gespeichert\. Bitte erneut versuchen\./);
+});
+
+test("a customer click can open the system contact picker", async () => {
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(app, /navigator\.contacts\.select\(\["name", "tel"\]/);
+  assert.match(app, /const openPicker = Boolean\(contact && !isComplete\(contact\)/);
+  assert.match(app, /Nummer von \$\{contactName\} übernommen/);
 });

@@ -135,16 +135,25 @@
               </div>
             </div>
 
-            <label class="phone-field" for="phoneInput">
-              <span>Telefonnummer</span>
-              <input
-                id="phoneInput"
-                type="tel"
-                inputmode="tel"
-                autocomplete="tel"
-                placeholder="Telefonnummer eingeben"
-              />
-            </label>
+            <div class="phone-field">
+              <label for="phoneInput">Telefonnummer</label>
+              <div class="phone-input-row">
+                <input
+                  id="phoneInput"
+                  type="tel"
+                  inputmode="tel"
+                  autocomplete="tel"
+                  placeholder="Telefonnummer eingeben"
+                />
+                <button
+                  class="button button-secondary contact-picker-button"
+                  id="contactPickerButton"
+                  type="button"
+                >
+                  Kontakte
+                </button>
+              </div>
+            </div>
 
             <dl class="contact-details">
               <div>
@@ -181,7 +190,7 @@
 
     <script src="contacts.js"></script>
     <script src="assignments.js"></script>
-    <script src="config.js?v=20260714-2"></script>
-    <script src="app.js?v=20260714-2"></script>
+    <script src="config.js?v=20260714-3"></script>
+    <script src="app.js?v=20260714-3"></script>
   </body>
 </html>

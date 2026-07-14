@@ -311,7 +311,7 @@ select:focus-visible {
 
 .select-field span,
 .field-label,
-.phone-field span {
+.phone-field > label {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
@@ -593,6 +593,12 @@ select:focus-visible {
   gap: 7px;
 }
 
+.phone-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
 .phone-field input {
   height: 54px;
   padding: 0 14px;
@@ -702,8 +708,14 @@ select:focus-visible {
   }
 
   .brand h1 {
-    font-size: 18px;
-  }
+  font-size: 18px;
+}
+
+.contact-picker-button {
+  min-width: 102px;
+  height: 54px;
+  padding-inline: 13px;
+}
 
   .brand p {
     max-width: 44vw;
