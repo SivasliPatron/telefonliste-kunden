@@ -9,7 +9,7 @@ test("the GitHub client points to the shared JustRunMyApp API", async () => {
 
 test("configuration loads before the phonebook application", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  assert.ok(html.indexOf('src="config.js"') < html.indexOf('src="app.js"'));
+  assert.ok(html.indexOf('src="config.js?') < html.indexOf('src="app.js?'));
   assert.match(html, /id="syncStatus"/);
   assert.match(html, /id="saveButton"/);
 });
