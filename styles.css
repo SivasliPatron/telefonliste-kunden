@@ -133,6 +133,40 @@ select:focus-visible {
   gap: 8px;
 }
 
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #27623b;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.sync-status::before {
+  width: 8px;
+  height: 8px;
+  content: "";
+  background: #2d8a4e;
+  border-radius: 50%;
+}
+
+.sync-status.is-connecting {
+  color: var(--muted);
+}
+
+.sync-status.is-connecting::before {
+  background: #d09a22;
+}
+
+.sync-status.is-offline {
+  color: #a43c32;
+}
+
+.sync-status.is-offline::before {
+  background: #c84b40;
+}
+
 .button {
   min-height: 40px;
   padding: 0 15px;
@@ -150,6 +184,11 @@ select:focus-visible {
 
 .button-primary:hover {
   background: #076d78;
+}
+
+.button:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
 .button-secondary {
@@ -677,6 +716,16 @@ select:focus-visible {
   .header-actions .button {
     min-height: 38px;
     padding: 0 13px;
+  }
+
+  .sync-status {
+    gap: 0;
+    font-size: 0;
+  }
+
+  .sync-status::before {
+    width: 10px;
+    height: 10px;
   }
 
   .owner-tabs {

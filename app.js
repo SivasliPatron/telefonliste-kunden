@@ -3,6 +3,8 @@
 
   const contacts = Array.isArray(window.CONTACTS) ? window.CONTACTS : [];
   const cityAssignments = window.CITY_ASSIGNMENTS || {};
+  const appConfig = window.APP_CONFIG || {};
+  const apiBaseUrl = String(appConfig.apiBaseUrl || "").replace(/\/+$/, "");
   const storageKey = "telefonliste-v1";
   const ownerLabels = {
     open: "Offen",
@@ -21,6 +23,7 @@
     ownerCountTural: document.querySelector("#ownerCountTural"),
     ownerCountRamil: document.querySelector("#ownerCountRamil"),
     ownerCountAll: document.querySelector("#ownerCountAll"),
+    syncStatus: document.querySelector("#syncStatus"),
     searchInput: document.querySelector("#searchInput"),
     clearSearchButton: document.querySelector("#clearSearchButton"),
     cityFilter: document.querySelector("#cityFilter"),
@@ -38,6 +41,7 @@
     editorEmail: document.querySelector("#editorEmail"),
     editorCity: document.querySelector("#editorCity"),
     phoneInput: document.querySelector("#phoneInput"),
+    saveButton: document.querySelector("#saveButton"),
     ownerButtons: [...document.querySelectorAll("[data-owner-value]")],
     closeEditorButton: document.querySelector("#closeEditorButton"),
     skipButton: document.querySelector("#skipButton"),
@@ -59,9 +63,11 @@
     draftOwner: "open",
     phones: saved.phones,
     owners: saved.owners,
+    isSaving: false,
   };
 
   let toastTimer = null;
+  let refreshPromise = null;
 
   function loadSavedState() {
     try {
@@ -89,6 +95,110 @@
     } catch {
       showToast("Speichern im Browser nicht möglich");
     }
+  }
+
+  function apiUrl(path) {
+    return `${apiBaseUrl}${path}`;
+  }
+
+  function setSyncStatus(status) {
+    const labels = {
+      connecting: "Verbinden...",
+      online: "Online",
+      offline: "Offline",
+    };
+    elements.syncStatus.textContent = labels[status] || labels.offline;
+    elements.syncStatus.classList.toggle("is-connecting", status === "connecting");
+    elements.syncStatus.classList.toggle("is-offline", status === "offline");
+  }
+
+  async function requestJson(path, options = {}) {
+    const response = await fetch(apiUrl(path), {
+      cache: "no-store",
+      ...options,
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
+      },
+    });
+    if (!response.ok) {
+      let message = `Serverfehler ${response.status}`;
+      try {
+        const payload = await response.json();
+        if (payload.error) message = payload.error;
+      } catch {
+        // The status code is enough when the server did not return JSON.
+      }
+      throw new Error(message);
+    }
+    return response.json();
+  }
+
+  function recordsToState(records) {
+    const phones = {};
+    const owners = {};
+    for (const record of Array.isArray(records) ? records : []) {
+      const id = String(record.contactId || record.id || "");
+      if (!id) continue;
+      phones[id] = String(record.phone || "");
+      owners[id] = normalizeOwner(record.owner);
+    }
+    return { phones, owners };
+  }
+
+  function localRecordsMissingRemotely(remote) {
+    const validIds = new Set(contacts.map((contact) => contact.id));
+    const localIds = new Set([...Object.keys(state.phones), ...Object.keys(state.owners)]);
+    return [...localIds]
+      .filter(
+        (id) =>
+          validIds.has(id) &&
+          !Object.prototype.hasOwnProperty.call(remote.phones, id) &&
+          !Object.prototype.hasOwnProperty.call(remote.owners, id),
+      )
+      .map((id) => ({
+        contactId: id,
+        phone: String(state.phones[id] || "").trim(),
+        owner: normalizeOwner(state.owners[id]),
+      }));
+  }
+
+  async function fetchRemoteState() {
+    const payload = await requestJson("/api/state");
+    return recordsToState(payload.records);
+  }
+
+  async function refreshRemoteState({ migrateLocal = false, quiet = false } = {}) {
+    if (refreshPromise) return refreshPromise;
+    refreshPromise = (async () => {
+      if (!quiet) setSyncStatus("connecting");
+      try {
+        let remote = await fetchRemoteState();
+        const localRecords = migrateLocal ? localRecordsMissingRemotely(remote) : [];
+        if (localRecords.length > 0) {
+          await requestJson("/api/sync", {
+            method: "POST",
+            body: JSON.stringify({ records: localRecords, overwrite: false }),
+          });
+          remote = await fetchRemoteState();
+        }
+
+        state.phones = { ...state.phones, ...remote.phones };
+        state.owners = { ...state.owners, ...remote.owners };
+        persistState();
+        renderAll();
+        setSyncStatus("online");
+        if (localRecords.length > 0) showToast("Lokale Eingaben online gesichert");
+      } catch (error) {
+        setSyncStatus("offline");
+        if (!quiet) showToast("Server nicht erreichbar");
+        console.error(error);
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+    return refreshPromise;
   }
 
   function normalizeOwner(value) {
@@ -327,9 +437,17 @@
     return null;
   }
 
-  function saveSelectedContact() {
+  function setSaving(isSaving) {
+    state.isSaving = isSaving;
+    elements.saveButton.disabled = isSaving;
+    elements.skipButton.disabled = isSaving;
+    elements.phoneInput.readOnly = isSaving;
+    elements.saveButton.textContent = isSaving ? "Speichert..." : "Speichern & Nächster";
+  }
+
+  async function saveSelectedContact() {
     const contact = contacts.find((item) => item.id === state.selectedId);
-    if (!contact) return;
+    if (!contact || state.isSaving) return;
 
     const phone = elements.phoneInput.value.trim();
     if (phone && !/\d/.test(phone)) {
@@ -339,18 +457,33 @@
     }
     elements.phoneInput.setCustomValidity("");
 
-    state.phones[contact.id] = phone;
-    state.owners[contact.id] = state.draftOwner;
-    persistState();
-    const next = nextPendingContact(contact.id);
-    renderAll();
+    setSaving(true);
+    try {
+      const payload = await requestJson(`/api/contacts/${encodeURIComponent(contact.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ phone, owner: state.draftOwner }),
+      });
+      const savedRecord = payload.record || {};
+      state.phones[contact.id] = String(savedRecord.phone ?? phone);
+      state.owners[contact.id] = normalizeOwner(savedRecord.owner ?? state.draftOwner);
+      persistState();
+      setSyncStatus("online");
+      const next = nextPendingContact(contact.id);
+      renderAll();
 
-    if (next) {
-      selectContact(next.id);
-    } else {
-      closeEditor();
+      if (next) {
+        selectContact(next.id);
+      } else {
+        closeEditor();
+      }
+      showToast(phone ? "Telefonnummer online gespeichert" : "Kontakt online gespeichert");
+    } catch (error) {
+      setSyncStatus("offline");
+      showToast("Nicht gespeichert. Bitte erneut versuchen.");
+      console.error(error);
+    } finally {
+      setSaving(false);
     }
-    showToast(phone ? "Telefonnummer gespeichert" : "Kontakt gespeichert");
   }
 
   function showToast(message) {
@@ -422,24 +555,33 @@
       const payload = JSON.parse(await file.text());
       if (!Array.isArray(payload.records)) throw new Error("Ungültiges Backup");
       const validIds = new Set(contacts.map((contact) => contact.id));
-      let imported = 0;
+      const records = [];
       for (const record of payload.records) {
         const id = String(record.id || "");
         if (!validIds.has(id)) continue;
-        if (Object.prototype.hasOwnProperty.call(record, "phone")) {
-          state.phones[id] = String(record.phone || "").trim();
-        }
-        if (Object.prototype.hasOwnProperty.call(record, "owner")) {
-          state.owners[id] = normalizeOwner(record.owner);
-        }
-        imported += 1;
+        records.push({
+          contactId: id,
+          phone: String(record.phone || "").trim(),
+          owner: normalizeOwner(record.owner),
+        });
+      }
+      await requestJson("/api/sync", {
+        method: "POST",
+        body: JSON.stringify({ records, overwrite: true }),
+      });
+      for (const record of records) {
+        state.phones[record.contactId] = record.phone;
+        state.owners[record.contactId] = record.owner;
       }
       persistState();
       closeEditor({ render: false });
       renderAll();
-      showToast(`${imported} Kontakte importiert`);
-    } catch {
-      showToast("Backup konnte nicht gelesen werden");
+      setSyncStatus("online");
+      showToast(`${records.length} Kontakte online importiert`);
+    } catch (error) {
+      setSyncStatus("offline");
+      showToast("Import nicht gespeichert");
+      console.error(error);
     } finally {
       elements.importInput.value = "";
     }
@@ -494,7 +636,7 @@
 
   elements.editorForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    saveSelectedContact();
+    void saveSelectedContact();
   });
 
   elements.skipButton.addEventListener("click", () => {
@@ -522,6 +664,16 @@
     elements.editorBackdrop.hidden = window.matchMedia("(min-width: 861px)").matches;
   });
 
+  window.addEventListener("online", () => {
+    void refreshRemoteState({ migrateLocal: true });
+  });
+
+  window.addEventListener("offline", () => setSyncStatus("offline"));
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !state.isSaving) void refreshRemoteState({ quiet: true });
+  });
+
   if (contacts.length === 0) {
     elements.emptyList.hidden = false;
     elements.emptyList.textContent = "Kontaktdaten fehlen";
@@ -529,4 +681,8 @@
   }
 
   renderAll();
+  void refreshRemoteState({ migrateLocal: true });
+  window.setInterval(() => {
+    if (!document.hidden && !state.isSaving) void refreshRemoteState({ quiet: true });
+  }, 20000);
 })();

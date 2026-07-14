@@ -22,6 +22,9 @@
       </div>
 
       <div class="header-actions">
+        <span class="sync-status is-connecting" id="syncStatus" role="status">
+          Verbinden...
+        </span>
         <button class="button button-secondary" id="importButton" type="button">
           Import
         </button>
@@ -158,7 +161,7 @@
               <button class="button button-secondary" id="skipButton" type="button">
                 Überspringen
               </button>
-              <button class="button button-primary" type="submit">
+              <button class="button button-primary" id="saveButton" type="submit">
                 Speichern &amp; Nächster
               </button>
             </div>
@@ -178,6 +181,7 @@
 
     <script src="contacts.js"></script>
     <script src="assignments.js"></script>
+    <script src="config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
