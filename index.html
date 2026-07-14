@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#164e73" />
+    <meta
+      name="description"
+      content="Telefonnummern der sevDesk-Kontakte schnell erfassen und zuordnen."
+    />
+    <title>Telefonliste</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">TL</div>
+        <div class="brand-copy">
+          <h1>Telefonliste</h1>
+          <p id="globalProgress">Kontakte werden geladen</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="button button-secondary" id="importButton" type="button">
+          Import
+        </button>
+        <button class="button button-secondary" id="csvButton" type="button">
+          CSV
+        </button>
+        <button class="button button-primary" id="backupButton" type="button">
+          Backup
+        </button>
+        <input id="importInput" type="file" accept="application/json,.json" hidden />
+      </div>
+    </header>
+
+    <nav class="owner-tabs" aria-label="Zuständigkeit">
+      <button class="owner-tab is-active" data-owner="open" type="button">
+        Offen <span id="ownerCountOpen">0</span>
+      </button>
+      <button class="owner-tab" data-owner="semih" type="button">
+        Semih <span id="ownerCountSemih">0</span>
+      </button>
+      <button class="owner-tab" data-owner="tural" type="button">
+        Tural <span id="ownerCountTural">0</span>
+      </button>
+      <button class="owner-tab" data-owner="ramil" type="button">
+        Ramil <span id="ownerCountRamil">0</span>
+      </button>
+      <button class="owner-tab" data-owner="all" type="button">
+        Alle <span id="ownerCountAll">0</span>
+      </button>
+    </nav>
+
+    <main class="app-main">
+      <section class="filters" aria-label="Filter">
+        <div class="search-field">
+          <label class="sr-only" for="searchInput">Kunden suchen</label>
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Name, Kundennummer, Ort oder Straße"
+            autocomplete="off"
+          />
+          <button id="clearSearchButton" type="button" title="Suche leeren" hidden>
+            ×
+          </button>
+        </div>
+
+        <label class="select-field">
+          <span>Stadt</span>
+          <select id="cityFilter"></select>
+        </label>
+
+        <label class="select-field">
+          <span>Status</span>
+          <select id="statusFilter">
+            <option value="pending">Offen</option>
+            <option value="done">Erfasst</option>
+            <option value="all">Alle</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="workspace">
+        <section class="contact-pane" aria-label="Kundenliste">
+          <div class="list-summary">
+            <strong id="listTitle">Offene Kontakte</strong>
+            <span id="listCount">0 Kunden</span>
+          </div>
+
+          <div class="contact-table-header" aria-hidden="true">
+            <span>Status</span>
+            <span>Kunde</span>
+            <span>Adresse</span>
+            <span>Stadt</span>
+            <span>Telefon</span>
+          </div>
+
+          <div class="contact-list" id="contactList"></div>
+          <div class="empty-list" id="emptyList" hidden>Keine Kontakte</div>
+        </section>
+
+        <aside class="editor-pane" id="editorPane" aria-label="Kontakt bearbeiten">
+          <div class="editor-empty" id="editorEmpty">Kein Kontakt ausgewählt</div>
+
+          <form id="editorForm" hidden>
+            <div class="editor-heading">
+              <div>
+                <span class="customer-number" id="editorCustomerNumber"></span>
+                <h2 id="editorName"></h2>
+                <p id="editorAddress"></p>
+              </div>
+              <button
+                class="icon-button"
+                id="closeEditorButton"
+                type="button"
+                title="Schließen"
+              >
+                ×
+              </button>
+            </div>
+
+            <div class="editor-section">
+              <span class="field-label">Zuständig</span>
+              <div class="owner-picker" id="ownerPicker">
+                <button type="button" data-owner-value="open">Offen</button>
+                <button type="button" data-owner-value="semih">Semih</button>
+                <button type="button" data-owner-value="tural">Tural</button>
+                <button type="button" data-owner-value="ramil">Ramil</button>
+              </div>
+            </div>
+
+            <label class="phone-field" for="phoneInput">
+              <span>Telefonnummer</span>
+              <input
+                id="phoneInput"
+                type="tel"
+                inputmode="tel"
+                autocomplete="tel"
+                placeholder="Telefonnummer eingeben"
+              />
+            </label>
+
+            <dl class="contact-details">
+              <div>
+                <dt>E-Mail</dt>
+                <dd id="editorEmail"></dd>
+              </div>
+              <div>
+                <dt>Ort</dt>
+                <dd id="editorCity"></dd>
+              </div>
+            </dl>
+
+            <div class="editor-actions">
+              <button class="button button-secondary" id="skipButton" type="button">
+                Überspringen
+              </button>
+              <button class="button button-primary" type="submit">
+                Speichern &amp; Nächster
+              </button>
+            </div>
+          </form>
+        </aside>
+      </section>
+    </main>
+
+    <button
+      class="editor-backdrop"
+      id="editorBackdrop"
+      type="button"
+      aria-label="Bearbeitung schließen"
+      hidden
+    ></button>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="contacts.js"></script>
+    <script src="assignments.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
