@@ -1,10 +1,10 @@
+import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 import express from "express";
-import pg from "pg";
 
-const { Pool } = pg;
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
 const validOwners = new Set(["open", "semih", "tural", "ramil"]);
@@ -36,35 +36,32 @@ export function normalizeRecord(input, contactIdOverride) {
   return { contactId, phone, owner };
 }
 
-export class PostgresStore {
-  constructor(connectionString) {
-    const isLocal = /(?:localhost|127\.0\.0\.1)/i.test(connectionString);
-    this.pool = new Pool({
-      connectionString,
-      ssl: isLocal ? false : { rejectUnauthorized: false },
-      max: 5,
-    });
+export class SQLiteStore {
+  constructor(databasePath) {
+    fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+    this.database = new DatabaseSync(databasePath);
+    this.database.exec("PRAGMA journal_mode = WAL");
+    this.database.exec("PRAGMA busy_timeout = 5000");
   }
 
   async init() {
-    await this.pool.query(`
+    this.database.exec(`
       CREATE TABLE IF NOT EXISTS phonebook_contacts (
-        contact_id VARCHAR(20) PRIMARY KEY,
-        phone VARCHAR(80) NOT NULL DEFAULT '',
-        owner VARCHAR(16) NOT NULL DEFAULT 'open',
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT phonebook_owner_check
-          CHECK (owner IN ('open', 'semih', 'tural', 'ramil'))
+        contact_id TEXT PRIMARY KEY,
+        phone TEXT NOT NULL DEFAULT '',
+        owner TEXT NOT NULL DEFAULT 'open'
+          CHECK (owner IN ('open', 'semih', 'tural', 'ramil')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )
     `);
   }
 
   async ping() {
-    await this.pool.query("SELECT 1");
+    this.database.prepare("SELECT 1").get();
   }
 
   async getAll() {
-    const result = await this.pool.query(`
+    return this.database.prepare(`
       SELECT
         contact_id AS "contactId",
         phone,
@@ -72,72 +69,63 @@ export class PostgresStore {
         updated_at AS "updatedAt"
       FROM phonebook_contacts
       ORDER BY contact_id
-    `);
-    return result.rows;
+    `).all();
   }
 
   async upsert(input) {
     const record = normalizeRecord(input);
-    const result = await this.pool.query(
-      `
-        INSERT INTO phonebook_contacts (contact_id, phone, owner, updated_at)
-        VALUES ($1, $2, $3, NOW())
-        ON CONFLICT (contact_id) DO UPDATE SET
-          phone = EXCLUDED.phone,
-          owner = EXCLUDED.owner,
-          updated_at = NOW()
-        RETURNING
-          contact_id AS "contactId",
-          phone,
-          owner,
-          updated_at AS "updatedAt"
-      `,
-      [record.contactId, record.phone, record.owner],
-    );
-    return result.rows[0];
+    this.database.prepare(`
+      INSERT INTO phonebook_contacts (contact_id, phone, owner, updated_at)
+      VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      ON CONFLICT (contact_id) DO UPDATE SET
+        phone = excluded.phone,
+        owner = excluded.owner,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    `).run(record.contactId, record.phone, record.owner);
+    return this.database.prepare(`
+      SELECT
+        contact_id AS "contactId",
+        phone,
+        owner,
+        updated_at AS "updatedAt"
+      FROM phonebook_contacts
+      WHERE contact_id = ?
+    `).get(record.contactId);
   }
 
   async sync(inputs, { overwrite }) {
     const records = inputs.map((input) => normalizeRecord(input));
-    const client = await this.pool.connect();
+    const statement = this.database.prepare(
+      overwrite
+        ? `
+            INSERT INTO phonebook_contacts (contact_id, phone, owner, updated_at)
+            VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            ON CONFLICT (contact_id) DO UPDATE SET
+              phone = excluded.phone,
+              owner = excluded.owner,
+              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          `
+        : `
+            INSERT INTO phonebook_contacts (contact_id, phone, owner, updated_at)
+            VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            ON CONFLICT (contact_id) DO NOTHING
+          `,
+    );
     try {
-      await client.query("BEGIN");
+      this.database.exec("BEGIN IMMEDIATE");
       for (const record of records) {
-        if (overwrite) {
-          await client.query(
-            `
-              INSERT INTO phonebook_contacts (contact_id, phone, owner, updated_at)
-              VALUES ($1, $2, $3, NOW())
-              ON CONFLICT (contact_id) DO UPDATE SET
-                phone = EXCLUDED.phone,
-                owner = EXCLUDED.owner,
-                updated_at = NOW()
-            `,
-            [record.contactId, record.phone, record.owner],
-          );
-        } else {
-          await client.query(
-            `
-              INSERT INTO phonebook_contacts (contact_id, phone, owner, updated_at)
-              VALUES ($1, $2, $3, NOW())
-              ON CONFLICT (contact_id) DO NOTHING
-            `,
-            [record.contactId, record.phone, record.owner],
-          );
-        }
+        statement.run(record.contactId, record.phone, record.owner);
       }
-      await client.query("COMMIT");
+      this.database.exec("COMMIT");
       return records.length;
     } catch (error) {
-      await client.query("ROLLBACK");
+      this.database.exec("ROLLBACK");
       throw error;
-    } finally {
-      client.release();
     }
   }
 
   async close() {
-    await this.pool.end();
+    this.database.close();
   }
 }
 
@@ -243,10 +231,8 @@ export function createApp({ store, siteRoot = currentDirectory } = {}) {
 }
 
 export async function startServer() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("DATABASE_URL is required");
-
-  const store = new PostgresStore(connectionString);
+  const databasePath = process.env.DATABASE_PATH || path.join(currentDirectory, "data", "phonebook.sqlite");
+  const store = new SQLiteStore(databasePath);
   await store.init();
   const app = createApp({ store });
   const port = Number(process.env.PORT || 10000);

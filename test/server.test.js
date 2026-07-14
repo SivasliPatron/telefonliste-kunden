@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { after, before, test } from "node:test";
 
-import { createApp, normalizeRecord } from "../server.js";
+import { createApp, normalizeRecord, SQLiteStore } from "../server.js";
 
 class MemoryStore {
   constructor() {
@@ -91,4 +94,25 @@ test("legacy sync does not overwrite an existing shared value", async () => {
   const state = await (await fetch(`${baseUrl}/api/state`)).json();
   assert.equal(state.records[0].phone, "+49 170 1234567");
   assert.equal(state.records[0].owner, "semih");
+});
+
+test("SQLite keeps phone numbers after the store is reopened", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "telefonliste-"));
+  const databasePath = path.join(directory, "phonebook.sqlite");
+  try {
+    const firstStore = new SQLiteStore(databasePath);
+    await firstStore.init();
+    await firstStore.upsert({ contactId: "1671", phone: "0171 5551234", owner: "tural" });
+    await firstStore.close();
+
+    const reopenedStore = new SQLiteStore(databasePath);
+    await reopenedStore.init();
+    const records = await reopenedStore.getAll();
+    assert.equal(records.length, 1);
+    assert.equal(records[0].phone, "0171 5551234");
+    assert.equal(records[0].owner, "tural");
+    await reopenedStore.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

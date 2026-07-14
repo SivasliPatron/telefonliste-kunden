@@ -6,6 +6,6 @@ Einfache browserbasierte Arbeitsliste fuer die Teams Semih, Tural und Ramil.
 - Telefonnummern und Zustaendigkeiten werden zentral gespeichert
 - Aenderungen erscheinen automatisch auf allen geoeffneten Geraeten
 - Sicherung als JSON und Export als CSV moeglich
-- Node.js-API mit PostgreSQL-Datenbank
+- Node.js-API mit persistenter SQLite-Datenbank
 
 Die enthaltenen Kontaktdaten sind fuer den internen Arbeitsgebrauch bestimmt.
